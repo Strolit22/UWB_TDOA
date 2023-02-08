@@ -34,12 +34,23 @@ void handleError();
 void transmitter();
 void receive();
 
-struct time
+struct AnchorTime
 {
-  DW1000Time Trp;
-  DW1000Time Tsr;
-  DW1000Time Trf;
-} time;
+  double Trp;
+  double Tsr;
+  double Trf;
+};
+
+struct TagTime
+{
+  double Tsp;
+  double Trr;
+  double Tsf;
+};
+
+double ToF = 0;
+double dist = 0;
+double c = 3e8;
 
 String id_anchor = "01";
 
@@ -51,6 +62,8 @@ enum
   Rep
 };
 volatile int check = Pol;
+AnchorTime anchor_time;
+TagTime tag_time;
 
 void setup()
 {
@@ -105,50 +118,89 @@ void transmitter()
   DW1000.newTransmit();
   DW1000.setDefaults();
   String msg = id_anchor;
+  Serial1.print("Transmitting data is ... ");
+  Serial1.println(message);
   DW1000.setData(msg);
   // delay sending the message for the given amount
   DW1000Time deltaTime = DW1000Time(10, DW1000Time::MILLISECONDS);
   DW1000.setDelay(deltaTime);
   DW1000.startTransmit();
+  DW1000Time newSentTime;
+  DW1000.getTransmitTimestamp(newSentTime);
+  Serial1.print("Sent timestamp ... "); 
+  Serial1.println(newSentTime.getAsMicroSeconds());
   //delaySent = millis();
   if (check == Res)
   {
+    anchor_time.Tsr = newSentTime.getAsMicroSeconds();
     check = Final;
   }
-  if (check == Rep)
-  {
-    check = Pol;
-    sentNum = 0;
-  }
 }
+
 void receive()
 {
   if (received)
   {
-    numReceived++;
+    //numReceived++;
     // get data as string
     DW1000.getData(message);
     // Serial1.print("Received message ... #"); Serial1.println(numReceived);
-    Serial1.print("Data is ... ");
+    Serial1.print("Received data is ... ");
     Serial1.println(message);
-    if (message == "01")
+    if (message.substring(0,2) == "01")
     {
-      DW1000Time newSentTime;
-      DW1000.getReceiveTimestamp(newSentTime);
+      DW1000Time newRecTime;
+      DW1000.getReceiveTimestamp(newRecTime);
       Serial1.print("Trp = ");
-      Serial1.println(newSentTime.getAsMicroSeconds());
+      Serial1.println(newRecTime.getAsMicroSeconds());
       if (check == Pol)
       {
+        anchor_time.Trp = newRecTime.getAsMicroSeconds();
         check = Res;
       }
       if (check == Final)
       {
+        anchor_time.Trf = newRecTime.getAsMicroSeconds();
+        sscanf(message.substring(2).c_str(), "%lf %lf %lf", &tag_time.Tsp, &tag_time.Trr, &tag_time.Tsf);
         check = Rep;
       }
       received = false;
     }
   }
 }
+
+void transmitter_dist()
+{
+  // transmit some data
+  sentNum++;
+  Serial1.print("Transmitting to Tag... #");
+  Serial1.println(sentNum);
+  ToF = ((tag_time.Trr - tag_time.Tsp) - (anchor_time.Tsr - anchor_time.Trp) + (anchor_time.Trf - anchor_time.Tsr) - (tag_time.Tsf - tag_time.Trr))/4;
+  dist = ToF * c;
+  char buf[20];
+  sprintf(buf, "%lf", dist);
+  DW1000.newTransmit();
+  DW1000.setDefaults();
+  String msg = id_anchor + dist;
+  Serial1.print("Transmitting data is ... ");
+  Serial1.println(message);
+  DW1000.setData(msg);
+  // delay sending the message for the given amount
+  DW1000Time deltaTime = DW1000Time(10, DW1000Time::MILLISECONDS);
+  DW1000.setDelay(deltaTime);
+  DW1000.startTransmit();
+  // DW1000Time newSentTime;
+  // DW1000.getTransmitTimestamp(newSentTime);
+  // Serial1.print("Sent timestamp ... ");
+  // Serial1.println(newSentTime.getAsMicroSeconds());
+  //delaySent = millis();
+  if (check == Rep)
+  {
+    check = Pol;
+    sentNum = 0;
+  }
+}
+
 void loop()
 {
   switch (check)
@@ -165,7 +217,7 @@ void loop()
     break;
   case Rep:
     delay(500);
-    transmitter();
+    transmitter_dist();
     break;
   }
   // if (check == Pol)
