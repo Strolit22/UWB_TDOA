@@ -11,6 +11,8 @@
 #include <SPI.h>
 #include <DW1000.h>
 #include <HardwareSerial.h>
+#include <string.h>
+//#include <basic_string.h>
 HardwareSerial Serial1(PA10, PA9);
 
 // connection pins
@@ -119,7 +121,7 @@ void transmitter()
   DW1000.setDefaults();
   String msg = id_anchor;
   Serial1.print("Transmitting data is ... ");
-  Serial1.println(message);
+  Serial1.println(msg);
   DW1000.setData(msg);
   // delay sending the message for the given amount
   DW1000Time deltaTime = DW1000Time(10, DW1000Time::MILLISECONDS);
@@ -127,12 +129,13 @@ void transmitter()
   DW1000.startTransmit();
   DW1000Time newSentTime;
   DW1000.getTransmitTimestamp(newSentTime);
-  Serial1.print("Sent timestamp ... "); 
+  Serial1.print("Sent timestamp ... ");
   Serial1.println(newSentTime.getAsMicroSeconds());
-  //delaySent = millis();
+  delaySent = millis();
   if (check == Res)
   {
     anchor_time.Tsr = newSentTime.getAsMicroSeconds();
+    Serial1.println(anchor_time.Tsr);
     check = Final;
   }
 }
@@ -141,27 +144,38 @@ void receive()
 {
   if (received)
   {
-    //numReceived++;
-    // get data as string
+    // numReceived++;
+    //  get data as string
     DW1000.getData(message);
     // Serial1.print("Received message ... #"); Serial1.println(numReceived);
     Serial1.print("Received data is ... ");
     Serial1.println(message);
-    if (message.substring(0,2) == "01")
+    if (message.substring(0, 2) == "01")
     {
       DW1000Time newRecTime;
       DW1000.getReceiveTimestamp(newRecTime);
-      Serial1.print("Trp = ");
-      Serial1.println(newRecTime.getAsMicroSeconds());
+      // Serial1.print("Trp = ");
+      // Serial1.println(newRecTime.getAsMicroSeconds());
       if (check == Pol)
       {
         anchor_time.Trp = newRecTime.getAsMicroSeconds();
+        Serial1.println(anchor_time.Trp);
         check = Res;
       }
       if (check == Final)
       {
         anchor_time.Trf = newRecTime.getAsMicroSeconds();
-        sscanf(message.substring(2).c_str(), "%lf %lf %lf", &tag_time.Tsp, &tag_time.Trr, &tag_time.Tsf);
+        Serial1.println(message);
+        Serial1.println(anchor_time.Trf);
+        // sscanf(message.substring(2), "%lf %lf %lf", &tag_time.Tsp, &tag_time.Trr, &tag_time.Tsf);
+        char* ptr;
+        tag_time.Tsp = strtod(message.substring(3, 13).c_str(), &ptr);
+        tag_time.Trr = strtod(message.substring(14, 24).c_str(), &ptr);
+        tag_time.Tsf = strtod(message.substring(25, 35).c_str(), &ptr);
+        //char* ptr;
+        Serial1.println(tag_time.Tsp);
+        Serial1.println(tag_time.Trr);
+        Serial1.println(tag_time.Tsf);
         check = Rep;
       }
       received = false;
@@ -175,15 +189,16 @@ void transmitter_dist()
   sentNum++;
   Serial1.print("Transmitting to Tag... #");
   Serial1.println(sentNum);
-  ToF = ((tag_time.Trr - tag_time.Tsp) - (anchor_time.Tsr - anchor_time.Trp) + (anchor_time.Trf - anchor_time.Tsr) - (tag_time.Tsf - tag_time.Trr))/4;
-  dist = ToF * c;
-  char buf[20];
-  sprintf(buf, "%lf", dist);
+  ToF = ((tag_time.Trr - tag_time.Tsp) - (anchor_time.Tsr - anchor_time.Trp) + (anchor_time.Trf - anchor_time.Tsr) - (tag_time.Tsf - tag_time.Trr)) / 4;
+  dist = ToF * c * 1e-6;
+  // char buf[20];
+  Serial1.println(ToF);
+  // sprintf(buf, " %lf", dist);
   DW1000.newTransmit();
   DW1000.setDefaults();
-  String msg = id_anchor + dist;
+  String msg = id_anchor + " " + dist;
   Serial1.print("Transmitting data is ... ");
-  Serial1.println(message);
+  Serial1.println(msg);
   DW1000.setData(msg);
   // delay sending the message for the given amount
   DW1000Time deltaTime = DW1000Time(10, DW1000Time::MILLISECONDS);
@@ -193,7 +208,7 @@ void transmitter_dist()
   // DW1000.getTransmitTimestamp(newSentTime);
   // Serial1.print("Sent timestamp ... ");
   // Serial1.println(newSentTime.getAsMicroSeconds());
-  //delaySent = millis();
+  // delaySent = millis();
   if (check == Rep)
   {
     check = Pol;
